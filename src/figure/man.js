@@ -9,12 +9,15 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-export async function loadMan({ base = './assets/', man = 'starter-man.glb', clips = 'starter-man-clips.glb', onProgress } = {}) {
+export async function loadMan({ base = './assets/', man = 'starter-man.glb', clips = 'starter-man-clips.glb', extraClips = [], onProgress } = {}) {
   const loader = new GLTFLoader();
-  // onProgress(0..1): how much of the two files has arrived
-  const got = [0, 0], size = [6.3e6, 19.9e6];
-  const tell = (i) => (e) => { got[i] = e.loaded; if (e.total) size[i] = e.total; onProgress?.(Math.min(1, (got[0] + got[1]) / (size[0] + size[1]))); };
-  const [m, c] = await Promise.all([loader.loadAsync(base + man, tell(0)), loader.loadAsync(base + clips, tell(1))]);
+  // onProgress(0..1): how much of the files has arrived
+  const files = [man, clips, ...extraClips];
+  const got = files.map(() => 0), size = [1.3e6, 2.4e6, ...extraClips.map(() => 1.9e6)];
+  const sum = (a) => a.reduce((s, v) => s + v, 0);
+  const tell = (i) => (e) => { got[i] = e.loaded; if (e.total) size[i] = e.total; onProgress?.(Math.min(1, sum(got) / sum(size))); };
+  const [m, ...clipFiles] = await Promise.all(files.map((f, i) => loader.loadAsync(base + f, tell(i))));
+  const c = { animations: clipFiles.flatMap((f) => f.animations) };
   const object = m.scene;
   const meshes = [];
   object.traverse((o) => {

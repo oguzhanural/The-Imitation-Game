@@ -36,7 +36,7 @@ void main() {
 `;
 
 // A palette is [light, half-tone, shade] and, where a lamp is carried, the thing's own colour for its light to fall on.
-function paint(shared, [L, M, S, A = L], { skinned = false, lower = null, split = -10, grain = 2.2 } = {}) {
+export function paint(shared, [L, M, S, A = L], { skinned = false, lower = null, split = -10, grain = 2.2 } = {}) {
   const col = (c) => ({ value: new THREE.Color(...c) });
   const [L2, M2, S2, A2 = L2] = lower ?? [L, M, S, A];
   return new THREE.ShaderMaterial({
@@ -83,11 +83,11 @@ export const DAY = {
   EYES: [[0.2, 0.15, 0.14], [0.12, 0.09, 0.1], [0.06, 0.05, 0.07]],
 };
 
-/** palettes: any of DAY's to paint him otherwise (another hour, other clothes). */
-export async function createFigure(shared, onProgress, palettes = {}) {
+/** palettes: any of DAY's to paint him otherwise (another hour, other clothes). extraClips: more clip files. */
+export async function createFigure(shared, onProgress, palettes = {}, { extraClips = [] } = {}) {
   const { CLOAK, HAT, SHIRT, TROUSERS, SKIN, BOOTS, HAIR, EYES } = { ...DAY, ...palettes };
   const own = (p) => `vec3(${p[3] ?? p[0]})`;
-  const man = await loadMan({ base: './figure/', onProgress });
+  const man = await loadMan({ base: './figure/', onProgress, extraClips });
   for (const mesh of man.meshes) {
     const name = mesh.name + ' ' + (mesh.material?.name ?? '');
     if (/eyebrow|eyelash/.test(name)) { mesh.visible = false; continue; }

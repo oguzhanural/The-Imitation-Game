@@ -5,9 +5,9 @@ import { t, onLang, setLang } from './game/i18n.js';
 
 document.documentElement.dataset.scene = SCENE;
 const q = new URLSearchParams(location.search);
-const switcher = document.getElementById('scenes');
-if (q.has('capture') || q.has('clean')) switcher?.remove();
-const buttons = [...(switcher?.querySelectorAll('button') ?? [])];
+const corners = ['scenes', 'langs'].map((id) => document.getElementById(id));
+if (q.has('capture') || q.has('clean')) for (const c of corners) c?.remove();
+const buttons = corners.flatMap((c) => [...(c?.querySelectorAll('button') ?? [])]);
 for (const button of buttons) {
   // Space is jump: a button must never be left holding the keyboard
   button.addEventListener('keydown', (e) => e.preventDefault());

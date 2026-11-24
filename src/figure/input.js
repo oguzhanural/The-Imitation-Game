@@ -1,6 +1,7 @@
 // Keyboard, mouse and gamepad, read once a frame into one plain state.
 //   move: {x, y} (x right, y forward, length 0..1), walk, sprint, strafe (held),
-//   jump (pressed this frame), look: {x, y} (radians this frame), zoom (wheel steps this frame)
+//   jump (pressed this frame), look: {x, y} (radians this frame), zoom (wheel steps this frame),
+//   attack (left button while the mouse is held for looking, pressed this frame), dodge (Q, pressed this frame)
 export class Input {
   constructor(el, { pads = true } = {}) {
     this.el = el;
@@ -9,7 +10,7 @@ export class Input {
     this.pressed = new Set();
     this.mouse = { x: 0, y: 0, wheel: 0, right: false, drag: false };
     this.walkToggle = false;
-    this.pad = { a: false, l3: false, sprint: false };
+    this.pad = { a: false, l3: false, sprint: false, x: false, b: false };
     this.sensitivity = 0.0022;
     this.override = null; // scripted input for captures
     this.lockable = true;
@@ -27,8 +28,10 @@ export class Input {
     addEventListener('blur', () => this.keys.clear());
     el.addEventListener('mousedown', (e) => {
       if (e.button === 2) this.mouse.right = true;
-      // a click locks the mouse for looking, except while a panel or the replay wants the mouse
-      if (e.button === 0 && this.lockable && document.pointerLockElement !== el) el.requestPointerLock?.()?.catch?.(() => {});
+      // a click locks the mouse for looking, except while a panel or the replay wants the mouse; once it is held,
+      // the left button strikes
+      if (e.button === 0 && document.pointerLockElement === el) this.pressed.add('Mouse0');
+      else if (e.button === 0 && this.lockable && document.pointerLockElement !== el) el.requestPointerLock?.()?.catch?.(() => {});
     });
     addEventListener('mouseup', (e) => { if (e.button === 2) this.mouse.right = false; });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -51,6 +54,8 @@ export class Input {
       sprint: k.has('ShiftLeft') || k.has('ShiftRight'),
       strafe: (this.mouse.right && document.pointerLockElement === this.el) || k.has('KeyF'),
       jump: this.pressed.has('Space'),
+      attack: this.pressed.has('Mouse0'),
+      dodge: this.pressed.has('KeyQ'),
       look: { x: this.mouse.x * this.sensitivity, y: this.mouse.y * this.sensitivity },
       zoom: this.mouse.wheel,
       device: 'keyboard',
@@ -59,7 +64,7 @@ export class Input {
     this.pressed.clear();
 
     // gamepad: left stick moves (its tilt sets the speed), right stick looks, L3 sprints,
-    // A jumps, LT strafes, d-pad up/down zooms
+    // A jumps, X strikes, B rolls, LT strafes, d-pad up/down zooms
     const pad = this.pads ? [...(navigator.getGamepads?.() ?? [])].find((p) => p && p.connected) : null;
     if (pad) {
       const dz = (v) => (Math.abs(v) < 0.15 ? 0 : Math.sign(v) * (Math.abs(v) - 0.15) / 0.85);
@@ -75,10 +80,12 @@ export class Input {
       if (pl < 0.2) this.pad.sprint = false;
       if (this.pad.sprint || btn(5)) s.sprint = true;
       if (btn(0) && !this.pad.a) s.jump = true;
+      if (btn(2) && !this.pad.x) s.attack = true;
+      if (btn(1) && !this.pad.b) s.dodge = true;
       if ((pad.buttons[6]?.value ?? 0) > 0.4) s.strafe = true;
       if (btn(12)) s.zoom -= 4 * dt;
       if (btn(13)) s.zoom += 4 * dt;
-      this.pad.a = btn(0); this.pad.l3 = btn(10);
+      this.pad.a = btn(0); this.pad.l3 = btn(10); this.pad.x = btn(2); this.pad.b = btn(1);
       if (rx || ry || pl > 0.01 || btn(0)) s.device = 'pad';
     }
     return s;

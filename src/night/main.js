@@ -30,6 +30,8 @@ import { t, onLang } from '../game/i18n.js';
 import { createHud, bearingOf } from '../game/hud.js';
 import { Objective } from '../game/objective.js';
 import { Health } from '../game/health.js';
+import { Combat } from '../game/combat.js';
+import { createSword } from './sword.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
@@ -98,7 +100,8 @@ const NIGHT_CLOTHES = {
 };
 let told = 0;
 const say = (value, label) => { told = Math.max(told, value); block.progress(told, label); };
-const figureComing = createFigure(shared, (done) => say(0.05 + 0.55 * done, 'Fetching the wanderer'), NIGHT_CLOTHES);
+// his sword fighting, roll, blows taken and fall come in a file of their own
+const figureComing = createFigure(shared, (done) => say(0.05 + 0.55 * done, 'Fetching the wanderer'), NIGHT_CLOTHES, { extraClips: ['starter-man-combat.glb'] });
 
 const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
 await prepareLand((done) => { say(0.03 + 0.09 * done, 'Laying the ground'); return turn(); });
@@ -117,12 +120,13 @@ const far = createFar(shared);
 const tracks = createTracks(shared);
 const drift = createDrift(shared);
 const lantern = createLantern(shared);
+const sword = createSword(shared);
 // the moon sees the whole ridge: its picture of the shade is what lays the horns' shadow down the snow
 const shade = createShade(renderer, shared, land.shade, { sun: MOON, size: [4096, 3072], box: [740, 560], centre: [0, 150, 0], back: 1600, near: 700, far: 2500 });
 lap('shade');
 say(0.25, 'Fetching the wanderer');
 await turn();
-scene.add(sky.group, far.group, land.mesh, snow.group, pines.group, cabin.group, tracks.mesh, lantern.object, lantern.glow, drift);
+scene.add(sky.group, far.group, land.mesh, snow.group, pines.group, cabin.group, tracks.mesh, lantern.object, lantern.glow, drift, sword.object, sword.dabs, sword.trail);
 
 await RAPIER.init();
 const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
@@ -190,38 +194,45 @@ function place(x, z, yaw) {
   animator.enter(animator.locoState({ strafe: false }), 0.05);
 }
 
-// He holds the lantern out at his side: the right arm is set to that after the clips have had it, upper arm out
-// and a little forward, forearm forward and level. Directions are in his own frame (+x his left, +z ahead).
-const HOLD = [['upperarm_r', 'lowerarm_r', new THREE.Vector3(-0.72, -0.52, 0.42).normalize()], ['lowerarm_r', 'hand_r', new THREE.Vector3(-0.42, 0.16, 0.86).normalize()]];
-const from = new THREE.Vector3(), to = new THREE.Vector3(), swing = new THREE.Quaternion(), pq = new THREE.Quaternion(), wq = new THREE.Quaternion();
+// He holds the lantern out at his side in his left hand (the sword has the right): the left arm is set to that after
+// the clips have had it, upper arm out and a little forward, forearm forward and level, as much as `weight` says
+// (while he fights or rolls the clips keep most of the arm). Directions are in his own frame (+x his left, +z ahead).
+const HOLD = [['upperarm_l', 'lowerarm_l', new THREE.Vector3(0.72, -0.52, 0.42).normalize()], ['lowerarm_l', 'hand_l', new THREE.Vector3(0.42, 0.16, 0.86).normalize()]];
+const from = new THREE.Vector3(), to = new THREE.Vector3(), swing = new THREE.Quaternion(), pq = new THREE.Quaternion(), wq = new THREE.Quaternion(), aim = new THREE.Quaternion();
 const grip = new THREE.Vector3(), forearm = new THREE.Vector3(), back = new THREE.Vector3(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), want = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 const at = (name, out) => out.setFromMatrixPosition(man.bones[name].matrixWorld);
 const HAND_TURN = q.has('hand') ? +q.get('hand') : 0; // a turn of the wrist added to that, for trying
-function holdLantern() {
+/** Closes a hand ('l' or 'r') round a handle. */
+function fist(side) {
+  for (const f of animator.fingerPoses ?? []) if (f.bone.name.endsWith(`_${side}`)) f.bone.quaternion.slerpQuaternions(f.flat, f.fist, f.thumb ? 0.75 : 1);
+  man.bones[`hand_${side}`].updateMatrixWorld(true);
+}
+function holdLantern(weight) {
   for (const [bone, child, dir] of HOLD) {
     const b = man.bones[bone];
     from.setFromMatrixPosition(man.bones[child].matrixWorld).sub(to.setFromMatrixPosition(b.matrixWorld)).normalize();
     to.copy(dir).applyQuaternion(man.object.quaternion);
     swing.setFromUnitVectors(from, to);
     b.parent.getWorldQuaternion(pq); b.getWorldQuaternion(wq);
-    b.quaternion.copy(pq.invert().multiply(swing.multiply(wq)));
+    aim.copy(pq.invert().multiply(swing.multiply(wq)));
+    b.quaternion.slerp(aim, weight);
     b.updateMatrixWorld(true);
   }
   // The hand is turned about the forearm until its back is uppermost, and closed into a fist: the lantern's
-  // handle hangs from inside it. (The back of the hand is found from the knuckles: along the hand, across it.)
-  const hand = man.bones.hand_r;
-  forearm.copy(at('hand_r', v1)).sub(at('lowerarm_r', v2)).normalize();
-  at('middle_01_r', v1).sub(at('hand_r', want));
-  at('index_01_r', v2).sub(at('pinky_01_r', want));
+  // handle hangs from inside it. (The back of the hand is found from the knuckles: along the hand, across it;
+  // across runs from forefinger to little finger on this side, the mirror of the right.)
+  const hand = man.bones.hand_l;
+  forearm.copy(at('hand_l', v1)).sub(at('lowerarm_l', v2)).normalize();
+  at('middle_01_l', v1).sub(at('hand_l', want));
+  at('pinky_01_l', v2).sub(at('index_01_l', want));
   back.crossVectors(v1, v2);
   back.addScaledVector(forearm, -back.dot(forearm)).normalize();
   want.copy(UP).addScaledVector(forearm, -UP.dot(forearm)).normalize();
-  animator.rotateWorld(hand, forearm, Math.atan2(forearm.dot(v1.crossVectors(back, want)), back.dot(want)) + HAND_TURN);
-  for (const f of animator.fingerPoses ?? []) if (f.bone.name.endsWith('_r')) f.bone.quaternion.slerpQuaternions(f.flat, f.fist, f.thumb ? 0.75 : 1);
-  hand.updateMatrixWorld(true);
+  animator.rotateWorld(hand, forearm, (Math.atan2(forearm.dot(v1.crossVectors(back, want)), back.dot(want)) + HAND_TURN) * weight);
+  fist('l');
   grip.set(0, 0, 0);
-  for (const name of ['index_01_r', 'ring_01_r', 'index_02_r', 'ring_02_r']) grip.add(at(name, v1));
+  for (const name of ['index_01_l', 'ring_01_l', 'index_02_l', 'ring_02_l']) grip.add(at(name, v1));
   grip.multiplyScalar(0.25);
 }
 
@@ -242,10 +253,15 @@ const health = new Health(100);
 const checkpoint = { x: spawn.x, z: spawn.z, yaw: Math.PI };
 let fallen = -1; // seconds since he fell, or -1 while he stands
 const FALLEN_FOR = 2.8;
-const STILL = { move: { x: 0, y: 0 }, walk: false, sprint: false, strafe: false, jump: false, look: { x: 0, y: 0 }, zoom: 0, device: 'keyboard' };
-function hurt(amount) {
+const STILL = { move: { x: 0, y: 0 }, walk: false, sprint: false, strafe: false, jump: false, attack: false, dodge: false, look: { x: 0, y: 0 }, zoom: 0, device: 'keyboard' };
+// what can be struck: the wolves, and anything put up to practise on (lab.dummy)
+const foes = [];
+const combat = new Combat({ player, sword, health, targets: () => foes });
+/** A bite: `from` is where it came from. */
+function hurt(amount, from = null) {
   if (!health.hurt(amount)) return false;
   hud.hurt();
+  combat.hurt(from ?? player.feet.clone().add(player.facing()));
   if (health.dead) { fallen = 0; hud.veil(true); }
   return true;
 }
@@ -256,6 +272,7 @@ function wake() {
   health.shield(1.5);
   fallen = -1;
   hud.veil(false);
+  combat.rise();
 }
 /** A resting point here: where he will wake if he falls, with his health given back. */
 function rest(x, z, yaw) {
@@ -269,8 +286,11 @@ const size = new THREE.Vector2();
 let first = 0, firstKey = false;
 const outlook = new THREE.Vector3(), eyeAt = new THREE.Vector3(), gaze = new THREE.Vector3();
 addEventListener('keydown', (e) => { if (e.code === 'KeyV') firstKey = !firstKey; });
+let holdW = 1; // how much of his left arm is given to holding the lantern out, 0..1
 function tick(dt) {
   dt = Math.min(dt, 1 / 20);
+  // a blow that lands holds the world a moment
+  if (combat.hitstop > 0) { combat.hitstop -= dt; dt *= 0.1; }
   time += dt;
   health.update(dt);
   if (fallen >= 0 && (fallen += dt) > FALLEN_FOR) wake();
@@ -280,7 +300,9 @@ function tick(dt) {
   first += ((firstKey || cabin.threshold(player.feet) ? 1 : 0) - first) * (1 - Math.exp(-6 * dt));
   const fp = first * first * (3 - 2 * first);
   cabin.update(time);
+  combat.update(dt, inp, follow.yaw);
   player.update(dt, inp, follow.yaw);
+  const kind = combat.kind; // what action he is in, if any
   // off the ridge and into the fjord, or off the map: he starts again from the last resting point
   if (player.feet.y < 1.5 || Math.max(Math.abs(player.feet.x), Math.abs(player.feet.z)) > EXTENT - 30) place(checkpoint.x, checkpoint.z, checkpoint.yaw);
   const root = player.visualRoot(dt);
@@ -290,16 +312,23 @@ function tick(dt) {
   const local = player.vel.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -player.yaw);
   animator.update(dt, { speed: player.mode === 'move' ? player.speed : Math.hypot(local.x, local.z), moveAngle: player.moveAngle, grounded: player.grounded });
   animator.relaxHands(player.speed);
-  animator.uprightTrunk(dt, player.speed, player.grounded && player.mode !== 'jump' && player.mode !== 'air' ? 1 : 0.3);
+  animator.uprightTrunk(dt, player.speed, kind ? 0 : player.grounded && player.mode !== 'jump' && player.mode !== 'air' ? 1 : 0.3);
   const lookW = player.mode === 'move' || player.mode === 'idleExtra' ? THREE.MathUtils.clamp(1 - (player.speed - 1.5) / 2, 0, 1) : 0;
   animator.lookToward(dt, camera.getWorldDirection(new THREE.Vector3()), lookW);
   animator.armClearance(dt);
   if (player.mode === 'move' && !player.strafe) animator.leanInto(dt, player.turnRate, player.speed, player.accelF);
   else animator.leanInto(dt, 0, 0, 0);
   const onGround = player.grounded && player.mode !== 'jump' && player.mode !== 'air';
-  animator.placeFeet(dt, (x, z, from) => player.ground(x, z, from, 1.4), root.y, onGround ? 1 : 0);
+  // feet are set on the ground under a stroke of the sword, not in a roll or a fall
+  const feetW = !onGround ? 0 : kind == null ? 1 : kind === 'attack' || kind === 'rec' || kind === 'hurt' ? 0.6 : 0;
+  animator.placeFeet(dt, (x, z, from) => player.ground(x, z, from, 1.4), root.y, feetW);
   man.object.updateMatrixWorld(true);
-  holdLantern();
+  holdW += ((kind == null ? 1 : kind === 'attack' || kind === 'rec' ? 0.4 : 0) - holdW) * (1 - Math.exp(-10 * dt));
+  holdLantern(holdW);
+  fist('r');
+  sword.hold(man.bones);
+  sword.update(dt, combat.swinging);
+  combat.resolve();
   figure.updateCloak(dt, air, heightAt);
   lantern.update(dt, grip, player.yaw);
   if (!isIn) tracks.update(root, player.yaw, player.speed, onGround);
@@ -322,6 +351,7 @@ function tick(dt) {
   }
   // seen from so close the picture is wider, and nothing of him is in it: the lantern's light is, the lantern isn't
   lantern.object.visible = lantern.glow.visible = fp < 0.5;
+  sword.object.visible = sword.dabs.visible = sword.trail.visible = fp < 0.5;
   camera.fov = 46 + 18 * fp;
   camera.near = 0.3 - 0.2 * fp;
   camera.updateProjectionMatrix();
@@ -342,7 +372,18 @@ function tick(dt) {
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health, combat, sword, foes,
+  /** A post to practise on at (x, z): it takes blows like a wolf would and says how many. */
+  dummy(x, z, hp = 100) {
+    const y = heightAt(x, z);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.4, 10), new THREE.MeshBasicMaterial({ color: 0x3a2a22 }));
+    mesh.position.set(x, y + 0.7, z);
+    scene.add(mesh);
+    const d = { alive: true, hp, blows: 0, radius: 0.36, position: new THREE.Vector3(x, y + 0.8, z), body: [new THREE.Vector3(x, y + 0.1, z), new THREE.Vector3(x, y + 1.35, z)], mesh,
+      hit(damage) { d.hp -= damage; d.blows++; if (d.hp <= 0) { d.alive = false; mesh.material.color.setHex(0x8a2a22); } } };
+    foes.push(d);
+    return d;
+  },
   /** Bites him for `amount` (as a wolf would). */
   hurt(amount = 25) { return hurt(amount); },
   /** A resting point where he stands now. */

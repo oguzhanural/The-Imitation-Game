@@ -222,6 +222,17 @@ export class Player {
       return;
     }
 
+    if (this.mode === 'act') {
+      // a clip played for its own sake (a stroke of the sword, a roll, a blow taken): it moves him by its own
+      // travel, scaled, and may turn him toward something as it goes
+      const a = this.action;
+      if (a.face != null) this.yaw = this.turnToward(this.yaw, a.face, a.turn, dt);
+      rootMotion = this.rootMotion(st, dt).multiplyScalar(a.travel);
+      a.time += dt;
+      if (st.done && !a.hold) this.endAct(a.fade);
+      return this.step(dt, rootMotion.divideScalar(Math.max(dt, 1e-4)), true);
+    }
+
     if (this.mode === 'idleExtra') return this.idleShot(dt, input);
 
     if (this.mode === 'land') {
@@ -244,6 +255,32 @@ export class Player {
   idleShot(dt, input) {
     if (input.jump && this.grounded) { this.mode = 'move'; return this.jump(dt, this.intent(input, 0)); }
     return this.step(dt, new THREE.Vector3(), true);
+  }
+
+  /**
+   * Plays `clip` as an action: whatever he was doing gives way to it. kind names it for whoever asks
+   * (this.action.kind); from/to/rate as Animator.oneShot; travel scales the clip's own ground travel; face/turn
+   * turn him toward a yaw as it plays; hold keeps the last frame (a fall) instead of handing back; fade is how
+   * soft the way in is and out again.
+   */
+  act(kind, clip, { from = 0, to = 1, rate = 1, travel = 1, face = null, turn = 10, hold = false, fade = 0.12, fadeOut = 0.25 } = {}) {
+    const A = this.anim;
+    this.mode = 'act';
+    this.speed = 0;
+    this.action = { kind, clip, travel, face, turn, hold, fade: fadeOut, time: 0, state: A.oneShot(kind, clip, { from, to, rate }) };
+    A.enter(this.action.state, fade);
+    return this.action;
+  }
+
+  /** Back to walking and standing from an action. */
+  endAct(fade = 0.25) {
+    if (this.mode !== 'act') return;
+    const A = this.anim;
+    this.mode = 'move';
+    this.action = null;
+    this.speed = 0;
+    A.phase = A.matchPhase(A.setup.walk, A.currentFeet());
+    A.enter(A.locoState({ strafe: this.strafe }), fade);
   }
 
   turnToward(a, b, rate, dt) { const d = angleWrap(b - a); return a + clamp(d, -rate * dt, rate * dt); }
