@@ -29,6 +29,7 @@ import { createCabin } from './cabin.js';
 import { t, onLang } from '../game/i18n.js';
 import { createHud, bearingOf } from '../game/hud.js';
 import { Objective } from '../game/objective.js';
+import { Health } from '../game/health.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
@@ -235,6 +236,33 @@ const objective = new Objective({
 });
 const looking = new THREE.Vector3();
 
+// --- his life: bites take from it; at nothing he falls, the dark comes down, and he wakes at the last resting point ---
+const health = new Health(100);
+// where he wakes: where he began, until a fight is won (each one won moves it on)
+const checkpoint = { x: spawn.x, z: spawn.z, yaw: Math.PI };
+let fallen = -1; // seconds since he fell, or -1 while he stands
+const FALLEN_FOR = 2.8;
+const STILL = { move: { x: 0, y: 0 }, walk: false, sprint: false, strafe: false, jump: false, look: { x: 0, y: 0 }, zoom: 0, device: 'keyboard' };
+function hurt(amount) {
+  if (!health.hurt(amount)) return false;
+  hud.hurt();
+  if (health.dead) { fallen = 0; hud.veil(true); }
+  return true;
+}
+function wake() {
+  place(checkpoint.x, checkpoint.z, checkpoint.yaw);
+  follow.yaw = checkpoint.yaw; follow.pivot.set(0, 0, 0);
+  health.fill();
+  health.shield(1.5);
+  fallen = -1;
+  hud.veil(false);
+}
+/** A resting point here: where he will wake if he falls, with his health given back. */
+function rest(x, z, yaw) {
+  Object.assign(checkpoint, { x, z, yaw });
+  health.fill();
+}
+
 const size = new THREE.Vector2();
 // Through his own eyes: always in the cabin and on its doorstep, where there is no room for an eye behind him,
 // and anywhere else with V. `first` is how far the eye has gone over to it, 0..1.
@@ -244,14 +272,17 @@ addEventListener('keydown', (e) => { if (e.code === 'KeyV') firstKey = !firstKey
 function tick(dt) {
   dt = Math.min(dt, 1 / 20);
   time += dt;
-  const inp = input.read(dt);
+  health.update(dt);
+  if (fallen >= 0 && (fallen += dt) > FALLEN_FOR) wake();
+  // read even while he lies there, so nothing pressed meanwhile is kept for after
+  const inp = fallen >= 0 ? (input.read(dt), STILL) : input.read(dt);
   const isIn = cabin.inside(player.feet);
   first += ((firstKey || cabin.threshold(player.feet) ? 1 : 0) - first) * (1 - Math.exp(-6 * dt));
   const fp = first * first * (3 - 2 * first);
   cabin.update(time);
   player.update(dt, inp, follow.yaw);
-  // off the ridge and into the fjord, or off the map: he starts again
-  if (player.feet.y < 1.5 || Math.max(Math.abs(player.feet.x), Math.abs(player.feet.z)) > EXTENT - 30) place(spawn.x, spawn.z, Math.PI);
+  // off the ridge and into the fjord, or off the map: he starts again from the last resting point
+  if (player.feet.y < 1.5 || Math.max(Math.abs(player.feet.x), Math.abs(player.feet.z)) > EXTENT - 30) place(checkpoint.x, checkpoint.z, checkpoint.yaw);
   const root = player.visualRoot(dt);
   man.object.position.copy(root);
   man.object.rotation.set(0, player.yaw, 0);
@@ -307,10 +338,15 @@ function tick(dt) {
   frame.render(scene, camera);
   camera.getWorldDirection(looking);
   objective.update(player.feet, bearingOf(looking.x, looking.z), hud);
+  hud.life(health.share);
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health,
+  /** Bites him for `amount` (as a wolf would). */
+  hurt(amount = 25) { return hurt(amount); },
+  /** A resting point where he stands now. */
+  checkpoint() { rest(player.feet.x, player.feet.z, player.yaw); return { ...checkpoint }; },
   step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) tick(dt); },
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */

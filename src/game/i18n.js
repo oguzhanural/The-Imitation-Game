@@ -13,6 +13,9 @@ const STRINGS = {
     'obj.cabin': 'Kulübe',
     'obj.cabin.goal': 'Kuzeydeki kulübeye ulaş',
     'obj.cabin.done': 'Kulübeye ulaştın',
+    death: 'Düştün',
+    'death.sub': 'Son kayıt noktasından devam ediyorsun',
+    checkpoint: 'Kayıt noktası',
   },
   en: {
     'scene.aurora': 'Aurora',
@@ -24,6 +27,9 @@ const STRINGS = {
     'obj.cabin': 'Cabin',
     'obj.cabin.goal': 'Reach the cabin to the north',
     'obj.cabin.done': 'You have reached the cabin',
+    death: 'You have fallen',
+    'death.sub': 'Back to the last resting point',
+    checkpoint: 'Resting point',
   },
 };
 

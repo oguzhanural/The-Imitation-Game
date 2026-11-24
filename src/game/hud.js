@@ -17,11 +17,17 @@ export function createHud({ hidden = false } = {}) {
   const canvas = document.getElementById('compass');
   const label = document.getElementById('compass-label');
   const banner = document.getElementById('banner');
+  const life = document.getElementById('life');
+  const lifeFill = life?.querySelector('.fill');
+  const lifeLoss = life?.querySelector('.loss');
+  const hurtWash = document.getElementById('hurt');
+  const veil = document.getElementById('veil');
   if (hidden || !root) {
-    root?.remove(); banner?.remove();
-    return { compass() {}, say() {}, hide() {} };
+    for (const el of [root, banner, life, hurtWash, veil]) el?.remove();
+    return { compass() {}, say() {}, hide() {}, life() {}, hurt() {}, veil() {} };
   }
   root.hidden = false;
+  life.hidden = false;
   const g = canvas.getContext('2d');
   let width = 0, ratio = 1;
   const fit = () => {
@@ -113,6 +119,28 @@ export function createHud({ hidden = false } = {}) {
       banner.classList.add('on');
       sayTimer = setTimeout(() => { banner.classList.remove('on'); sayStop(); sayStop = () => {}; }, seconds * 1000);
     },
-    hide(on = true) { root.hidden = on; },
+    hide(on = true) { root.hidden = on; life.hidden = on; },
+    /** His health, 0..1. What was just lost lingers a moment in a paler colour before it goes. */
+    life(share) {
+      const pct = `${(Math.max(0, Math.min(1, share)) * 100).toFixed(1)}%`;
+      if (lifeFill.style.width === pct) return;
+      lifeFill.style.width = pct;
+      lifeLoss.style.width = pct;
+      life.classList.toggle('low', share < 0.3);
+    },
+    /** A wash of colour from the edges: he has been bitten. */
+    hurt() {
+      hurtWash.classList.remove('on');
+      void hurtWash.offsetWidth; // start the fade again
+      hurtWash.classList.add('on');
+    },
+    /** The dark that comes down when he falls, with words in it (i18n keys), or lifts again (on = false). */
+    veil(on, title = 'death', sub = 'death.sub') {
+      if (on) {
+        veil.querySelector('.title').textContent = t(title);
+        veil.querySelector('.sub').textContent = t(sub);
+      }
+      veil.classList.toggle('on', on);
+    },
   };
 }

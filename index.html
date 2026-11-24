@@ -30,6 +30,21 @@
         font: italic 22px/1.4 Georgia, serif; letter-spacing: 0.1em; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85); opacity: 0; transition: opacity 1.4s;
         pointer-events: none; }
       #banner.on { opacity: 1; }
+      #life { position: fixed; left: 18px; top: 18px; width: min(200px, calc(100vw - 36px)); height: 9px; background: rgba(6, 18, 25, 0.55);
+        border: 1px solid rgba(243, 227, 195, 0.25); border-radius: 2px; pointer-events: none; overflow: hidden; }
+      #life[hidden] { display: none; }
+      #life .loss, #life .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; }
+      #life .loss { background: rgba(243, 227, 195, 0.55); transition: width 0.9s 0.35s; }
+      #life .fill { background: linear-gradient(180deg, #f2c27e, #c98b48); transition: width 0.12s, background 0.6s; }
+      #life.low .fill { background: linear-gradient(180deg, #e0745a, #a33f2f); }
+      #hurt { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(150, 30, 25, 0.55) 100%); }
+      #hurt.on { animation: hurt 0.9s ease-out; }
+      @keyframes hurt { from { opacity: 1; } to { opacity: 0; } }
+      #veil { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; gap: 10px; background: rgba(4, 10, 14, 0.88);
+        color: #f3e3c3; opacity: 0; transition: opacity 1.2s; pointer-events: none; padding: 0 16px; }
+      #veil.on { opacity: 1; }
+      #veil .title { font: italic 34px/1.3 Georgia, serif; letter-spacing: 0.14em; }
+      #veil .sub { font: 14px/1.4 Georgia, serif; letter-spacing: 0.08em; color: rgba(243, 227, 195, 0.7); }
     </style>
   </head>
   <body>
@@ -38,6 +53,9 @@
     <div id="scenes"><button data-scene="aurora" tabindex="-1">Aurora</button><button data-scene="autumn" tabindex="-1">Autumn wood</button><span class="sep"></span><button data-lang="tr" tabindex="-1">TR</button><button data-lang="en" tabindex="-1">EN</button></div>
     <div id="hud" hidden><canvas id="compass"></canvas><div id="compass-label"></div></div>
     <div id="banner"></div>
+    <div id="life" hidden><div class="loss"></div><div class="fill"></div></div>
+    <div id="hurt"></div>
+    <div id="veil"><div class="title"></div><div class="sub"></div></div>
     <div id="hint">Click to look · WASD move · Shift sprint · Space jump · wheel to step back</div>
     <script type="module" src="/src/boot.js"></script>
   </body>
