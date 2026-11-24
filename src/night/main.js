@@ -32,6 +32,9 @@ import { Objective } from '../game/objective.js';
 import { Health } from '../game/health.js';
 import { Combat } from '../game/combat.js';
 import { createSword } from './sword.js';
+import { loadWolfModel, Wolf } from '../game/wolf.js';
+import { Encounters } from '../game/encounters.js';
+import { paintWolf } from './wolf-paint.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
@@ -102,6 +105,7 @@ let told = 0;
 const say = (value, label) => { told = Math.max(told, value); block.progress(told, label); };
 // his sword fighting, roll, blows taken and fall come in a file of their own
 const figureComing = createFigure(shared, (done) => say(0.05 + 0.55 * done, 'Fetching the wanderer'), NIGHT_CLOTHES, { extraClips: ['starter-man-combat.glb'] });
+const wolfComing = loadWolfModel('./creatures/wolf.glb');
 
 const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
 await prepareLand((done) => { say(0.03 + 0.09 * done, 'Laying the ground'); return turn(); });
@@ -155,6 +159,40 @@ physics.step();
 // he has come up from the south: his tracks are already there behind him
 tracks.lay(crestX, START.z + 16, START.z + 0.4);
 lap('figure');
+
+// --- the wolves: six, in five fights along the way, the last two at once ---
+const wolfModel = await wolfComing;
+/** What keeps a wolf out of things: the spruces near the way, and the cabin. */
+const push = new THREE.Vector3();
+function keepOut(x, z) {
+  push.set(0, 0, 0);
+  for (const t of pines.colliders) {
+    const dx = x - t.x, dz = z - t.z, d = Math.hypot(dx, dz), gap = t.r + 0.45;
+    if (d < gap && d > 1e-4) { push.x += (dx / d) * (gap - d); push.z += (dz / d) * (gap - d); }
+  }
+  const cx = x - CABIN.x, cz = z - CABIN.z, ox = 3.6 - Math.abs(cx), oz = 3.1 - Math.abs(cz);
+  if (ox > 0 && oz > 0) { if (ox < oz) push.x += Math.sign(cx || 1) * ox; else push.z += Math.sign(cz || 1) * oz; }
+  return push;
+}
+const makeWolf = () => {
+  const w = new Wolf({ model: wolfModel, paint: (object) => paintWolf(shared, object), ground: heightAt, avoid: keepOut });
+  scene.add(w.object, w.dabs);
+  return w;
+};
+// each fight: where it starts (he has come that far north) and where its wolves come from, round where he is
+const flank = (side, ahead, out = 20) => (feet) => ({ x: crestX(feet.z - ahead) + side * out, z: feet.z - ahead });
+const FIGHTS = [
+  { at: 284, from: [flank(-1, -4)] }, // out of the spruces to the west, from a little behind
+  { at: 222, from: [flank(1, 6)] }, // up the eastern slope
+  // they come up from below the crest, where the ridge falls away, so none is seen to appear
+  { at: 165, from: [flank(1, 26, 24)] }, // up over the knoll's eastern shoulder, ahead of him
+  { at: 95, from: [flank(-1, 8)] },
+  { at: 30, from: [flank(-1, 24, 24), flank(1, -6)], delays: [0, 2.5] }, // two: one ahead from the west, one behind him from the east
+];
+const encounters = new Encounters(FIGHTS.map((f) => ({
+  trigger: (feet) => feet.z < f.at,
+  spawn: (feet) => f.from.map((at, i) => ({ ...at(feet), delay: f.delays?.[i] ?? 0 })),
+})), (i) => FIGHTS[i].from.map(makeWolf));
 
 const frame = createFrame(renderer, shared);
 fitFrame = () => frame.resize();
@@ -255,7 +293,7 @@ let fallen = -1; // seconds since he fell, or -1 while he stands
 const FALLEN_FOR = 2.8;
 const STILL = { move: { x: 0, y: 0 }, walk: false, sprint: false, strafe: false, jump: false, attack: false, dodge: false, look: { x: 0, y: 0 }, zoom: 0, device: 'keyboard' };
 // what can be struck: the wolves, and anything put up to practise on (lab.dummy)
-const foes = [];
+const foes = encounters.all;
 const combat = new Combat({ player, sword, health, targets: () => foes });
 /** A bite: `from` is where it came from. */
 function hurt(amount, from = null) {
@@ -273,6 +311,7 @@ function wake() {
   fallen = -1;
   hud.veil(false);
   combat.rise();
+  encounters.reset();
 }
 /** A resting point here: where he will wake if he falls, with his health given back. */
 function rest(x, z, yaw) {
@@ -329,6 +368,15 @@ function tick(dt) {
   sword.hold(man.bones);
   sword.update(dt, combat.swinging);
   combat.resolve();
+  // the wolves move, and bite
+  for (const e of encounters.update(dt, player.feet)) {
+    if (e.type === 'bite') hurt(e.damage, e.from);
+    else if (e.type === 'start') hud.say(e.index === 0 ? 'tut.fight' : e.index === FIGHTS.length - 1 ? 'wolves.two' : 'wolves.come', 4);
+    else if (e.type === 'won') {
+      rest(player.feet.x, player.feet.z, player.yaw);
+      hud.say(encounters.done ? 'wolves.gone' : 'checkpoint', 3.5);
+    }
+  }
   figure.updateCloak(dt, air, heightAt);
   lantern.update(dt, grip, player.yaw);
   if (!isIn) tracks.update(root, player.yaw, player.speed, onGround);
@@ -369,10 +417,25 @@ function tick(dt) {
   camera.getWorldDirection(looking);
   objective.update(player.feet, bearingOf(looking.x, looking.z), hud);
   hud.life(health.share);
+  // a bar over the wolf he is turned to, or the one he struck last
+  const foe = [combat.target, ...combat.events.map((e) => e.target)].find((w) => w?.alive);
+  if (foe && foe.position.distanceTo(player.feet) < 14) {
+    looking.copy(foe.position); looking.y += 0.55;
+    looking.project(camera);
+    hud.foe(looking.z < 1 ? ((looking.x + 1) / 2) * innerWidth : null, ((1 - looking.y) / 2) * innerHeight, foe.share);
+  } else hud.foe(null);
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health, combat, sword, foes,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health, combat, sword, foes, encounters, FIGHTS,
+  /** Puts him just short of fight i (earlier ones counted as won), facing north. */
+  fight(i) {
+    for (let k = 0; k < encounters.defs.length; k++) for (const w of encounters.defs[k].wolves) w.place(w.pos.x, w.pos.z, 0);
+    encounters.index = i; encounters.running = false;
+    const z = FIGHTS[i].at + 3;
+    place(crestX(z), z, Math.PI); follow.yaw = Math.PI; follow.pivot.set(0, 0, 0);
+    rest(crestX(z), z, Math.PI);
+  },
   /** A post to practise on at (x, z): it takes blows like a wolf would and says how many. */
   dummy(x, z, hp = 100) {
     const y = heightAt(x, z);

@@ -37,6 +37,10 @@
       #life .loss { background: rgba(243, 227, 195, 0.55); transition: width 0.9s 0.35s; }
       #life .fill { background: linear-gradient(180deg, #f2c27e, #c98b48); transition: width 0.12s, background 0.6s; }
       #life.low .fill { background: linear-gradient(180deg, #e0745a, #a33f2f); }
+      #foe { position: fixed; left: 0; top: 0; width: 64px; height: 5px; background: rgba(6, 18, 25, 0.6); border: 1px solid rgba(243, 227, 195, 0.3);
+        border-radius: 2px; pointer-events: none; overflow: hidden; }
+      #foe[hidden] { display: none; }
+      #foe .fill { height: 100%; width: 100%; background: #dfe9ef; transition: width 0.15s; }
       #hurt { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(150, 30, 25, 0.55) 100%); }
       #hurt.on { animation: hurt 0.9s ease-out; }
       @keyframes hurt { from { opacity: 1; } to { opacity: 0; } }
@@ -55,6 +59,7 @@
     <div id="hud" hidden><canvas id="compass"></canvas><div id="compass-label"></div></div>
     <div id="banner"></div>
     <div id="life" hidden><div class="loss"></div><div class="fill"></div></div>
+    <div id="foe" hidden><div class="fill"></div></div>
     <div id="hurt"></div>
     <div id="veil"><div class="title"></div><div class="sub"></div></div>
     <div id="hint">Click to look · WASD move · Shift sprint · Space jump · wheel to step back</div>

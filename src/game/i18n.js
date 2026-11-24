@@ -16,6 +16,10 @@ const STRINGS = {
     death: 'Düştün',
     'death.sub': 'Son kayıt noktasından devam ediyorsun',
     checkpoint: 'Kayıt noktası',
+    'tut.fight': 'Bir kurt! Sol tık ile saldır, Q ile yuvarlan',
+    'wolves.come': 'Bir kurt daha',
+    'wolves.two': 'İki kurt birden!',
+    'wolves.gone': 'Yol açık. Kulübeye ilerle',
   },
   en: {
     'scene.aurora': 'Aurora',
@@ -30,6 +34,10 @@ const STRINGS = {
     death: 'You have fallen',
     'death.sub': 'Back to the last resting point',
     checkpoint: 'Resting point',
+    'tut.fight': 'A wolf! Left click to strike, Q to roll',
+    'wolves.come': 'Another wolf',
+    'wolves.two': 'Two at once!',
+    'wolves.gone': 'The way is clear. On to the cabin',
   },
 };
 

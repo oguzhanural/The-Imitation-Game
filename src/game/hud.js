@@ -22,9 +22,11 @@ export function createHud({ hidden = false } = {}) {
   const lifeLoss = life?.querySelector('.loss');
   const hurtWash = document.getElementById('hurt');
   const veil = document.getElementById('veil');
+  const foe = document.getElementById('foe');
+  const foeFill = foe?.querySelector('.fill');
   if (hidden || !root) {
-    for (const el of [root, banner, life, hurtWash, veil]) el?.remove();
-    return { compass() {}, say() {}, hide() {}, life() {}, hurt() {}, veil() {} };
+    for (const el of [root, banner, life, hurtWash, veil, foe]) el?.remove();
+    return { compass() {}, say() {}, hide() {}, life() {}, hurt() {}, veil() {}, foe() {} };
   }
   root.hidden = false;
   life.hidden = false;
@@ -120,6 +122,14 @@ export function createHud({ hidden = false } = {}) {
       sayTimer = setTimeout(() => { banner.classList.remove('on'); sayStop(); sayStop = () => {}; }, seconds * 1000);
     },
     hide(on = true) { root.hidden = on; life.hidden = on; },
+    /** A small bar over a wolf: at (x, y) in the page's pixels, its health 0..1; null hides it. */
+    foe(x, y, share) {
+      if (x == null) { if (!foe.hidden) foe.hidden = true; return; }
+      foe.hidden = false;
+      foe.style.transform = `translate(${Math.round(x - 32)}px, ${Math.round(y - 14)}px)`;
+      const pct = `${(Math.max(0, share) * 100).toFixed(1)}%`;
+      if (foeFill.style.width !== pct) foeFill.style.width = pct;
+    },
     /** His health, 0..1. What was just lost lingers a moment in a paler colour before it goes. */
     life(share) {
       const pct = `${(Math.max(0, Math.min(1, share)) * 100).toFixed(1)}%`;
