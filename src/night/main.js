@@ -17,7 +17,7 @@ import { Animator } from '../figure/animator.js';
 import { Player } from '../figure/player.js';
 import { Input } from '../figure/input.js';
 import { Follow } from '../figure/camera.js';
-import { prepareLand, createLand, heightAt, crestX, START, MOON, EXTENT } from './land.js';
+import { prepareLand, createLand, heightAt, crestX, START, MOON, EXTENT, CABIN } from './land.js';
 import { createSnow } from './snow.js';
 import { createSky } from './sky.js';
 import { createFar } from './far.js';
@@ -26,6 +26,9 @@ import { createLantern } from './lantern.js';
 import { createDrift } from './drift.js';
 import { createPines } from './pines.js';
 import { createCabin } from './cabin.js';
+import { t, onLang } from '../game/i18n.js';
+import { createHud, bearingOf } from '../game/hud.js';
+import { Objective } from '../game/objective.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
@@ -221,6 +224,17 @@ function holdLantern() {
   grip.multiplyScalar(0.25);
 }
 
+// --- the story: the first thing asked of him is to reach the cabin ---
+// The words over the picture are left out of stills and films (?capture, ?clean) unless ?hud asks for them.
+const hud = createHud({ hidden: (capture || q.has('clean')) && !q.has('hud') });
+// he counts as there on its doorstep; the compass points at the door, in the middle of the south wall's east half
+const objective = new Objective({
+  at: { x: CABIN.x + 1.75, z: CABIN.z + 3.2 },
+  label: 'obj.cabin', goal: 'obj.cabin.goal', done: 'obj.cabin.done',
+  reached: (feet) => cabin.threshold(feet),
+});
+const looking = new THREE.Vector3();
+
 const size = new THREE.Vector2();
 // Through his own eyes: always in the cabin and on its doorstep, where there is no room for an eye behind him,
 // and anywhere else with V. `first` is how far the eye has gone over to it, 0..1.
@@ -291,10 +305,12 @@ function tick(dt) {
   snow.follow(camera.position.x, camera.position.z);
   shade.update(scene, root);
   frame.render(scene, camera);
+  camera.getWorldDirection(looking);
+  objective.update(player.feet, bearingOf(looking.x, looking.z), hud);
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective,
   step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) tick(dt); },
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */
@@ -353,9 +369,10 @@ function run() {
 }
 if (!capture) {
   const hint = document.getElementById('hint');
-  hint.textContent = 'Click to look · WASD move · Shift sprint · Space jump · V first person';
+  onLang(() => { hint.textContent = t('hint.aurora'); });
   addEventListener('keydown', (e) => { if (e.code === 'KeyH') hint.classList.toggle('off'); });
   setTimeout(() => hint.classList.add('faded'), 9000);
+  setTimeout(() => hud.say(objective.goal, 6), 1500);
 }
 fitView();
 loaded = true;
