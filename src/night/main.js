@@ -38,6 +38,7 @@ import { paintWolf } from './wolf-paint.js';
 import { createAudio } from '../game/audio.js';
 import { createWind, createSteps, createFire, createSwish, createKnocks } from '../game/synth.js';
 import { loadSounds } from '../game/sounds.js';
+import { createMusic } from '../game/music.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
@@ -336,7 +337,7 @@ const outlook = new THREE.Vector3(), eyeAt = new THREE.Vector3(), gaze = new THR
 addEventListener('keydown', (e) => { if (e.code === 'KeyV') firstKey = !firstKey; });
 // --- what it sounds like (src/game/audio.js, src/game/synth.js): silent in stills and films ---
 const audio = createAudio({ camera, silent: capture || q.has('clean') });
-const sound = audio && { wind: createWind(audio), steps: createSteps(audio), fire: createFire(audio), swish: createSwish(audio), knocks: createKnocks(audio) };
+const sound = audio && { wind: createWind(audio), steps: createSteps(audio), fire: createFire(audio), swish: createSwish(audio), knocks: createKnocks(audio), music: createMusic(audio) };
 // the recorded ones: wolves, his breath, blows (src/game/sounds.js)
 const voices = audio ? await loadSounds(audio) : null;
 const heard = { pinned: { l: true, r: true }, shelter: 0, n: 0 };
@@ -374,6 +375,8 @@ function listen(dt, onGround, isIn) {
     if (w.growlIn < 0) { voices?.play('growl', { follow: w.pos }); w.growlIn = 1.6 + Math.random() * 2; }
   }
   voices?.update();
+  // the music breathes with the aurora, and tightens while a fight is on
+  sound.music.update(dt, { glow: shared.uGlow.value.x, intensity: encounters.running ? 1 : 0 });
 }
 /** What he and the wolves do, heard: called with each frame's events. */
 function voice(e) {
