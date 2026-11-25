@@ -157,3 +157,27 @@ export function createFire(audio) {
     },
   };
 }
+
+// --- the sword --------------------------------------------------------------------------------------
+/**
+ * The sword through the air: a rush of noise that rises in pitch and strength with the speed of the point, so
+ * every stroke sounds as fast as it is drawn. update(dt, speed m/s, swinging).
+ */
+export function createSwish(audio) {
+  const { ctx, noise, bus } = audio;
+  const out = gain(ctx);
+  out.connect(bus.sfx);
+  const body = filter(ctx, 'bandpass', 600, 1.4), bodyG = gain(ctx, 1);
+  const edge = filter(ctx, 'bandpass', 2400, 3), edgeG = gain(ctx, 0.35);
+  loop(ctx, noise, 1.7).connect(body); body.connect(bodyG); bodyG.connect(out);
+  loop(ctx, noise, 3.1).connect(edge); edge.connect(edgeG); edgeG.connect(out);
+  return {
+    update(dt, speed, swinging) {
+      const t = ctx.currentTime;
+      const v = swinging ? Math.min(1, Math.max(0, (speed - 5) / 45)) : 0;
+      out.gain.setTargetAtTime(0.55 * Math.pow(v, 1.2), t, v > 0 ? 0.012 : 0.05);
+      body.frequency.setTargetAtTime(320 + 1500 * v, t, 0.02);
+      edge.frequency.setTargetAtTime(1500 + 3200 * v, t, 0.02);
+    },
+  };
+}

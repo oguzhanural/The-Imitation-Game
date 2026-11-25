@@ -36,7 +36,7 @@ import { loadWolfModel, Wolf } from '../game/wolf.js';
 import { Encounters } from '../game/encounters.js';
 import { paintWolf } from './wolf-paint.js';
 import { createAudio } from '../game/audio.js';
-import { createWind, createSteps, createFire } from '../game/synth.js';
+import { createWind, createSteps, createFire, createSwish } from '../game/synth.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
@@ -333,7 +333,7 @@ const outlook = new THREE.Vector3(), eyeAt = new THREE.Vector3(), gaze = new THR
 addEventListener('keydown', (e) => { if (e.code === 'KeyV') firstKey = !firstKey; });
 // --- what it sounds like (src/game/audio.js, src/game/synth.js): silent in stills and films ---
 const audio = createAudio({ camera, silent: capture || q.has('clean') });
-const sound = audio && { wind: createWind(audio), steps: createSteps(audio), fire: createFire(audio) };
+const sound = audio && { wind: createWind(audio), steps: createSteps(audio), fire: createFire(audio), swish: createSwish(audio) };
 const heard = { pinned: { l: true, r: true }, shelter: 0, n: 0 };
 const fireAt = new THREE.Vector3();
 /** Each frame, after he has moved and the eye is set: the air, his steps, the fire. */
@@ -361,6 +361,7 @@ function listen(dt, onGround, isIn) {
   fireAt.set(shared.uFire.value.x, shared.uFire.value.y, shared.uFire.value.z);
   const near = isIn ? 1 : Math.max(0, 1 - p.distanceTo(fireAt) / 16) ** 2;
   sound.fire.update(dt, near, isIn ? 1 : 0);
+  sound.swish.update(dt, sword.speed, combat.swinging);
 }
 
 let holdW = 1; // how much of his left arm is given to holding the lantern out, 0..1
