@@ -36,7 +36,8 @@ import { loadWolfModel, Wolf } from '../game/wolf.js';
 import { Encounters } from '../game/encounters.js';
 import { paintWolf } from './wolf-paint.js';
 import { createAudio } from '../game/audio.js';
-import { createWind, createSteps, createFire, createSwish } from '../game/synth.js';
+import { createWind, createSteps, createFire, createSwish, createKnocks } from '../game/synth.js';
+import { loadSounds } from '../game/sounds.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
@@ -305,6 +306,8 @@ const combat = new Combat({ player, sword, health, targets: () => foes });
 function hurt(amount, from = null) {
   if (!health.hurt(amount)) return false;
   hud.hurt();
+  sound?.knocks.snap();
+  if (health.dead) { voices?.play('death'); voices?.play('fall', { delay: 0.7 }); } else voices?.play('pain');
   combat.hurt(from ?? player.feet.clone().add(player.facing()));
   if (health.dead) { fallen = 0; hud.veil(true); }
   return true;
@@ -333,7 +336,9 @@ const outlook = new THREE.Vector3(), eyeAt = new THREE.Vector3(), gaze = new THR
 addEventListener('keydown', (e) => { if (e.code === 'KeyV') firstKey = !firstKey; });
 // --- what it sounds like (src/game/audio.js, src/game/synth.js): silent in stills and films ---
 const audio = createAudio({ camera, silent: capture || q.has('clean') });
-const sound = audio && { wind: createWind(audio), steps: createSteps(audio), fire: createFire(audio), swish: createSwish(audio) };
+const sound = audio && { wind: createWind(audio), steps: createSteps(audio), fire: createFire(audio), swish: createSwish(audio), knocks: createKnocks(audio) };
+// the recorded ones: wolves, his breath, blows (src/game/sounds.js)
+const voices = audio ? await loadSounds(audio) : null;
 const heard = { pinned: { l: true, r: true }, shelter: 0, n: 0 };
 const fireAt = new THREE.Vector3();
 /** Each frame, after he has moved and the eye is set: the air, his steps, the fire. */
@@ -362,6 +367,27 @@ function listen(dt, onGround, isIn) {
   const near = isIn ? 1 : Math.max(0, 1 - p.distanceTo(fireAt) / 16) ** 2;
   sound.fire.update(dt, near, isIn ? 1 : 0);
   sound.swish.update(dt, sword.speed, combat.swinging);
+  // a circling wolf growls now and then, from where it is
+  for (const w of encounters.all) {
+    if (w.state !== 'circle') continue;
+    w.growlIn = (w.growlIn ?? 0.6 + Math.random()) - dt;
+    if (w.growlIn < 0) { voices?.play('growl', { follow: w.pos }); w.growlIn = 1.6 + Math.random() * 2; }
+  }
+  voices?.update();
+}
+/** What he and the wolves do, heard: called with each frame's events. */
+function voice(e) {
+  if (!voices) return;
+  switch (e.type) {
+    case 'strike': if (e.step === 2 || Math.random() < 0.6) voices.play('effort'); break;
+    case 'hit': voices.play('flesh', { gain: e.heavy ? 1.2 : 0.9 }); break;
+    case 'roll': sound.knocks.roll(); break;
+    case 'start': voices.play('howl', { at: encounters.defs[e.index].wolves[0].pos }); break;
+    case 'crouch': voices.play('snarl', { follow: e.wolf.pos }); break;
+    case 'spring': voices.play('bark', { follow: e.wolf.pos }); break;
+    case 'hurt': voices.play('yelp', { follow: e.wolf.pos, delay: 0.03 }); break;
+    case 'down': voices.play('whine', { follow: e.wolf.pos, delay: 0.15 }); voices.play('fall', { at: e.wolf.pos, delay: 0.45 }); break;
+  }
 }
 
 let holdW = 1; // how much of his left arm is given to holding the lantern out, 0..1
@@ -407,8 +433,10 @@ function tick(dt) {
   sword.hold(man.bones);
   sword.update(dt, combat.swinging);
   combat.resolve();
+  for (const e of combat.events) voice(e);
   // the wolves move, and bite
   for (const e of encounters.update(dt, player.feet)) {
+    voice(e);
     if (e.type === 'bite') hurt(e.damage, e.from);
     else if (e.type === 'start') hud.say(e.index === 0 ? 'tut.fight' : e.index === FIGHTS.length - 1 ? 'wolves.two' : 'wolves.come', 4);
     else if (e.type === 'won') {
@@ -467,7 +495,7 @@ function tick(dt) {
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health, combat, sword, foes, encounters, FIGHTS, audio, sound,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health, combat, sword, foes, encounters, FIGHTS, audio, sound, voices,
   /** Puts him just short of fight i (earlier ones counted as won), facing north. */
   fight(i) {
     for (let k = 0; k < encounters.defs.length; k++) for (const w of encounters.defs[k].wolves) w.place(w.pos.x, w.pos.z, 0);

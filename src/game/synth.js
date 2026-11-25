@@ -181,3 +181,44 @@ export function createSwish(audio) {
     },
   };
 }
+
+// --- jaws and a roll ---------------------------------------------------------------------------------
+/** Teeth meeting: two hard clicks a breath apart over a dull knock. */
+function snapBuffer(ctx) {
+  const sr = ctx.sampleRate, n = Math.round(sr * 0.12);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  for (const [at, amp] of [[0, 1], [0.016 + Math.random() * 0.01, 0.7]]) {
+    const t0 = Math.floor(at * sr);
+    for (let k = 0; k < 160 && t0 + k < n; k++) d[t0 + k] += amp * (Math.random() * 2 - 1) * Math.exp(-k / 28);
+  }
+  for (let i = 0; i < n; i++) d[i] += 0.5 * Math.sin((i / sr) * 2 * Math.PI * 140) * Math.exp(-i / (sr * 0.02));
+  return b;
+}
+/** A roll through snow: a long brush of it and the cloth turning over. */
+function rollBuffer(ctx) {
+  const sr = ctx.sampleRate, n = Math.round(sr * 0.55);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  let lp = 0, lp2 = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / n, env = Math.sin(Math.PI * Math.min(1, t * 1.2)) ** 1.5;
+    lp += ((Math.random() * 2 - 1) - lp) * 0.25;
+    lp2 += (lp - lp2) * 0.3;
+    d[i] = env * (lp2 * 1.6 + (Math.random() < 0.004 ? (Math.random() - 0.5) * 1.2 : 0));
+  }
+  return b;
+}
+export function createKnocks(audio) {
+  const { ctx, bus } = audio;
+  const snaps = Array.from({ length: 4 }, () => snapBuffer(ctx));
+  const rolls = Array.from({ length: 3 }, () => rollBuffer(ctx));
+  const fire = (buffer, level, rate = 1) => {
+    const s = ctx.createBufferSource();
+    s.buffer = buffer; s.playbackRate.value = rate * Math.sqrt(audio.pace);
+    const g = gain(ctx, level);
+    s.connect(g); g.connect(bus.sfx); s.start();
+  };
+  return {
+    snap() { fire(snaps[Math.floor(Math.random() * snaps.length)], 0.6, rand(0.9, 1.1)); },
+    roll() { fire(rolls[Math.floor(Math.random() * rolls.length)], 0.55, rand(0.9, 1.1)); },
+  };
+}

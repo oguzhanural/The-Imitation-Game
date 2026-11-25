@@ -47,10 +47,14 @@ export function createAudio({ camera, silent = false }) {
   const ctx = listener.context;
   const input = listener.getInput();
 
-  // slow motion: everything darkens through one filter at the end
+  // slow motion: everything darkens through one filter at the end; then a limiter, so that a snarl, a blow
+  // and a cry together never break up
   const dull = ctx.createBiquadFilter();
   dull.type = 'lowpass'; dull.frequency.value = 20000; dull.Q.value = 0.5;
-  listener.setFilter(dull);
+  const limit = ctx.createDynamicsCompressor();
+  limit.threshold.value = -8; limit.knee.value = 6; limit.ratio.value = 12; limit.attack.value = 0.003; limit.release.value = 0.2;
+  listener.gain.disconnect();
+  listener.gain.connect(dull); dull.connect(limit); limit.connect(ctx.destination);
 
   const bus = (to = input) => { const g = ctx.createGain(); g.connect(to); return g; };
   // the open air is heard through a wall when he is in

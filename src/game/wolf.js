@@ -56,7 +56,7 @@ export class Wolf {
     this.head = new THREE.Vector3();
     this.lastHit = -9;
     this.clock = 0;
-    this.events = []; // { type: 'bite' | 'down' }, taken by whoever runs the fight
+    this.events = []; // { type: 'bite' | 'down' | 'crouch' | 'spring' | 'hurt' }, taken by whoever runs the fight
   }
 
   get share() { return Math.max(0, this.hp) / HP; }
@@ -100,6 +100,7 @@ export class Wolf {
     }
     this.state = 'stagger';
     this.timer = 0;
+    this.events.push({ type: 'hurt' });
     this.play(Math.random() < 0.5 ? 'Idle_HitReact1' : 'Idle_HitReact2', { loop: false, fade: 0.05, rate: 1.1 });
   }
 
@@ -191,6 +192,7 @@ export class Wolf {
   crouch() {
     this.state = 'crouch';
     this.timer = 0;
+    this.events.push({ type: 'crouch' });
     // the first frames of the attack, slowed, are the drawing back
     this.play('Attack', { loop: false, fade: 0.15, rate: 0.35 });
   }
@@ -198,6 +200,7 @@ export class Wolf {
   spring(toward) {
     this.state = 'spring';
     this.timer = 0;
+    this.events.push({ type: 'spring' });
     this.bit = false;
     this.lunge = toward;
     this.leap = THREE.MathUtils.clamp((this.distAtSpring - 0.85) / 0.4, 4, 12);

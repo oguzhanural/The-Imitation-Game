@@ -55,7 +55,7 @@ export class Combat {
     this.target = null;
     this.rolledAt = -9;
     this.clock = 0;
-    this.events = []; // what happened this frame, for whoever listens: { type: 'hit', target, damage }
+    this.events = []; // what happened this frame, for whoever listens: { type: 'hit', target, damage, heavy } | strike | roll
     this.a = new THREE.Vector3(); this.b = new THREE.Vector3(); // the blade now
     this.pa = new THREE.Vector3(); this.pb = new THREE.Vector3(); // and the frame before
     this.sa = new THREE.Vector3(); this.sb = new THREE.Vector3();
@@ -119,7 +119,7 @@ export class Combat {
       this.struck.add(t);
       t.hit(stroke.damage, this.player.feet, !!stroke.heavy);
       this.hitstop = stroke.heavy ? 0.1 : 0.065;
-      this.events.push({ type: 'hit', target: t, damage: stroke.damage });
+      this.events.push({ type: 'hit', target: t, damage: stroke.damage, heavy: !!stroke.heavy });
     }
   }
 
@@ -181,6 +181,7 @@ export class Combat {
     }
     P.yaw = face + THREE.MathUtils.clamp(angleWrap(P.yaw - face), -0.5, 0.5); // a quick turn, finished as it plays
     P.act('attack', stroke.clip, { rate: stroke.rate, to: stroke.to ?? 1, travel, face, turn: 14, hold: true, fade: i ? 0.06 : 0.1 });
+    this.events.push({ type: 'strike', step: i });
   }
 
   roll(want) {
@@ -192,6 +193,7 @@ export class Combat {
     if (yaw == null) yaw = this.target ? Math.atan2(P.feet.x - this.target.position.x, P.feet.z - this.target.position.z) : P.yaw;
     P.yaw = yaw;
     P.act('roll', 'Roll', { from: 0.04, to: 0.86, rate: 1.3, travel: 0.62, fade: 0.06, fadeOut: 0.2 });
+    this.events.push({ type: 'roll' });
     this.health.shield(0.5);
   }
 }
