@@ -13,13 +13,13 @@ for (const button of buttons) {
   button.addEventListener('keydown', (e) => e.preventDefault());
   button.addEventListener('focus', () => button.blur());
   const { scene, lang } = button.dataset;
-  button.addEventListener('click', () => (scene ? showScene(scene) : setLang(lang)));
+  if (scene || lang) button.addEventListener('click', () => (scene ? showScene(scene) : setLang(lang)));
 }
 onLang((lang) => {
   for (const button of buttons) {
     const { scene } = button.dataset;
     if (scene) { button.textContent = t(`scene.${scene}`); button.classList.toggle('on', scene === SCENE); }
-    else button.classList.toggle('on', button.dataset.lang === lang);
+    else if (button.dataset.lang) button.classList.toggle('on', button.dataset.lang === lang);
   }
   const loading = document.getElementById('loading');
   if (loading) loading.textContent = t('loading');

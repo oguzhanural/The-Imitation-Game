@@ -341,6 +341,18 @@ const sound = audio && { wind: createWind(audio), steps: createSteps(audio), fir
 // the recorded ones: wolves, his breath, blows (src/game/sounds.js)
 const voices = audio ? await loadSounds(audio) : null;
 const heard = { pinned: { l: true, r: true }, shelter: 0, n: 0 };
+// the button in the corner (and M) turns it all off and on, and is remembered
+{
+  const button = document.querySelector('[data-sound]');
+  if (audio && button) {
+    const show = () => { button.textContent = t(audio.muted ? 'sound.off' : 'sound.on'); button.classList.toggle('on', !audio.muted); };
+    const flip = () => { audio.mute(!audio.muted); show(); };
+    button.hidden = false;
+    button.addEventListener('click', flip);
+    addEventListener('keydown', (e) => { if (e.code === 'KeyM' && !e.repeat) flip(); });
+    onLang(show);
+  } else button?.remove();
+}
 const fireAt = new THREE.Vector3();
 /** Each frame, after he has moved and the eye is set: the air, his steps, the fire. */
 function listen(dt, onGround, isIn) {
