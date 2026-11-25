@@ -35,6 +35,8 @@ import { createSword } from './sword.js';
 import { loadWolfModel, Wolf } from '../game/wolf.js';
 import { Encounters } from '../game/encounters.js';
 import { paintWolf } from './wolf-paint.js';
+import { createAudio } from '../game/audio.js';
+import { createWind, createSteps, createFire } from '../game/synth.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
@@ -214,9 +216,13 @@ window.patch?.addEventListener?.('qualitychange', applyQuality);
 
 const wind = { x: WIND.x, z: WIND.y };
 let time = 0;
-function air(x, y, z, out) {
+/** How hard the wind blows at (x, z) now, 0..1: the bands the snow in the air moves in, and the sound of it. */
+function gustAt(x, z) {
   const along = x * wind.x + z * wind.z, across = -x * wind.z + z * wind.x;
-  const gust = THREE.MathUtils.clamp(0.5 + 0.8 * noise((along - time * 4) / 40, across / 90) + 0.3 * noise((along - time * 6.5) / 11, across / 17), 0, 1);
+  return THREE.MathUtils.clamp(0.5 + 0.8 * noise((along - time * 4) / 40, across / 90) + 0.3 * noise((along - time * 6.5) / 11, across / 17), 0, 1);
+}
+function air(x, y, z, out) {
+  const gust = gustAt(x, z);
   const speed = 0.6 + 3.6 * gust * gust;
   return out.set(wind.x * speed, 0.25 * Math.sin(time * 2.3 + x) * gust, wind.z * speed);
 }
@@ -325,6 +331,38 @@ const size = new THREE.Vector2();
 let first = 0, firstKey = false;
 const outlook = new THREE.Vector3(), eyeAt = new THREE.Vector3(), gaze = new THREE.Vector3();
 addEventListener('keydown', (e) => { if (e.code === 'KeyV') firstKey = !firstKey; });
+// --- what it sounds like (src/game/audio.js, src/game/synth.js): silent in stills and films ---
+const audio = createAudio({ camera, silent: capture || q.has('clean') });
+const sound = audio && { wind: createWind(audio), steps: createSteps(audio), fire: createFire(audio) };
+const heard = { pinned: { l: true, r: true }, shelter: 0, n: 0 };
+const fireAt = new THREE.Vector3();
+/** Each frame, after he has moved and the eye is set: the air, his steps, the fire. */
+function listen(dt, onGround, isIn) {
+  if (!sound) return;
+  const p = player.feet;
+  // the wind: as hard as it blows where he stands, quieter among the spruces, heard from the side it comes from
+  if (heard.n++ % 15 === 0) {
+    let near = 0;
+    for (const t of pines.colliders) if (Math.abs(t.x - p.x) < 12 && Math.abs(t.z - p.z) < 12) near++;
+    heard.shelter = Math.min(1, near / 14);
+  }
+  camera.getWorldDirection(looking);
+  const side = -(wind.x * -looking.z + wind.z * looking.x) / Math.hypot(looking.x, looking.z || 1e-6);
+  sound.wind.update(dt, gustAt(p.x, p.z), heard.shelter, side);
+  // a step each time a heel lands
+  const feet = animator.feetInfo;
+  const kind = combat.kind;
+  for (const s of ['l', 'r']) {
+    const now = !!feet?.[s]?.pinned;
+    if (now && !heard.pinned[s] && onGround && (player.speed > 0.3 || kind === 'attack' || kind === 'rec')) sound.steps.step(s, Math.max(player.speed, 2), isIn);
+    heard.pinned[s] = now;
+  }
+  audio.indoors(isIn ? 1 : 0);
+  fireAt.set(shared.uFire.value.x, shared.uFire.value.y, shared.uFire.value.z);
+  const near = isIn ? 1 : Math.max(0, 1 - p.distanceTo(fireAt) / 16) ** 2;
+  sound.fire.update(dt, near, isIn ? 1 : 0);
+}
+
 let holdW = 1; // how much of his left arm is given to holding the lantern out, 0..1
 function tick(dt) {
   dt = Math.min(dt, 1 / 20);
@@ -380,6 +418,7 @@ function tick(dt) {
   figure.updateCloak(dt, air, heightAt);
   lantern.update(dt, grip, player.yaw);
   if (!isIn) tracks.update(root, player.yaw, player.speed, onGround);
+  listen(dt, onGround, isIn);
 
   // a trunk between the eye and him brings the eye in; over the ground it rises instead
   follow.update(dt, root, inp.look, inp.zoom, (o, d, max) => {
@@ -427,7 +466,7 @@ function tick(dt) {
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health, combat, sword, foes, encounters, FIGHTS,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health, combat, sword, foes, encounters, FIGHTS, audio, sound,
   /** Puts him just short of fight i (earlier ones counted as won), facing north. */
   fight(i) {
     for (let k = 0; k < encounters.defs.length; k++) for (const w of encounters.defs[k].wolves) w.place(w.pos.x, w.pos.z, 0);
