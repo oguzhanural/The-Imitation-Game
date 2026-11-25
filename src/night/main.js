@@ -393,11 +393,63 @@ function voice(e) {
   }
 }
 
+// --- the danger focus: in the first fight and the last, the moment a wolf comes into sight the world slows, the
+// eye turns to it and narrows, he turns to face it, and the sound dulls; then all of it lets go ---
+const FOCUS = { at: [0, FIGHTS.length - 1], length: 1.35, pace: 0.25 };
+const focus = { t: -1, wolf: null, done: new Set(), amount: 0 };
+const sight = new THREE.Vector3();
+const toWolf = new THREE.Vector3(), eyeTry = new THREE.Vector3();
+/** Whether from `eye` all of the wolf can be seen, down to its feet: no ground and no spruce in between. */
+function clearTo(eye, w) {
+  toWolf.set(w.pos.x, w.pos.y + 0.15, w.pos.z);
+  for (let k = 1; k < 12; k++) {
+    sight.lerpVectors(eye, toWolf, k / 12);
+    if (heightAt(sight.x, sight.z) > sight.y - 0.05) return false;
+  }
+  return !pines.hides(eye, w.position) && !pines.hides(eye, toWolf);
+}
+/** Where over his shoulder the eye goes to see wolf w: [side, height], tried right then left, low then high. */
+const SHOULDERS = [[1.5, 2.1], [-1.5, 2.1], [1.6, 3.2], [-1.6, 3.2], [2.6, 2.6], [-2.6, 2.6]];
+function shoulderAt(w, side, up, out) {
+  const dx = w.pos.x - player.feet.x, dz = w.pos.z - player.feet.z, l = Math.hypot(dx, dz) || 1;
+  out.set(player.feet.x - (dx / l) * 3.2 - (dz / l) * side, player.feet.y + up, player.feet.z - (dz / l) * 3.2 + (dx / l) * side);
+  out.y = Math.max(out.y, heightAt(out.x, out.z) + 0.6);
+  return out;
+}
+/** The first shoulder from which the wolf, near enough, can be seen whole; null if none. */
+function shoulderFor(w) {
+  if (w.pos.distanceTo(player.feet) > 20) return null;
+  return SHOULDERS.find(([side, up]) => clearTo(shoulderAt(w, side, up, eyeTry), w)) ?? null;
+}
+/** Real seconds in: how fast the world runs now (1 normal), and starts a focus when one is due. */
+function focusPace(realDt) {
+  if (focus.t < 0) {
+    const i = encounters.index;
+    if (!encounters.running || focus.done.has(i) || !FOCUS.at.includes(i) || health.dead) return 1;
+    let shoulder = null;
+    const w = encounters.current.wolves.find((w) => w.alive && (shoulder = shoulderFor(w)));
+    if (!w) return 1;
+    focus.done.add(i); focus.t = 0; focus.wolf = w; focus.shoulder = shoulder;
+    // the further off it is, the more the eye narrows on it
+    focus.narrow = THREE.MathUtils.clamp(4 + 0.75 * w.pos.distanceTo(player.feet), 7, 19);
+  }
+  focus.t += realDt;
+  const t = focus.t, L = FOCUS.length;
+  if (t > L) { focus.t = -1; focus.wolf = null; focus.amount = 0; return 1; }
+  // in fast, held, out slower
+  focus.amount = t < 0.15 ? t / 0.15 : t > L - 0.4 ? (L - t) / 0.4 : 1;
+  focus.amount = focus.amount * focus.amount * (3 - 2 * focus.amount);
+  return 1 - (1 - FOCUS.pace) * focus.amount;
+}
+
 let holdW = 1; // how much of his left arm is given to holding the lantern out, 0..1
 function tick(dt) {
   dt = Math.min(dt, 1 / 20);
   // a blow that lands holds the world a moment
   if (combat.hitstop > 0) { combat.hitstop -= dt; dt *= 0.1; }
+  const realDt = dt, pace = focusPace(realDt);
+  dt *= pace;
+  audio?.slow(pace);
   time += dt;
   health.update(dt);
   if (fallen >= 0 && (fallen += dt) > FALLEN_FOR) wake();
@@ -452,6 +504,13 @@ function tick(dt) {
   if (!isIn) tracks.update(root, player.yaw, player.speed, onGround);
   listen(dt, onGround, isIn);
 
+  // in a focus the eye swings round to the wolf, quickly but not at once, and he turns to it too
+  if (focus.wolf) {
+    const to = Math.atan2(focus.wolf.pos.x - player.feet.x, focus.wolf.pos.z - player.feet.z);
+    const turn = (a, rate) => a + THREE.MathUtils.clamp(Math.atan2(Math.sin(to - a), Math.cos(to - a)), -rate * realDt, rate * realDt);
+    follow.yaw = turn(follow.yaw, 4.5 * focus.amount);
+    if (player.mode === 'move') player.yaw = turn(player.yaw, 6 * focus.amount);
+  }
   // a trunk between the eye and him brings the eye in; over the ground it rises instead
   follow.update(dt, root, inp.look, inp.zoom, (o, d, max) => {
     let hit = player.castRay(o, d, max);
@@ -459,6 +518,15 @@ function tick(dt) {
     const tree = pines.block(o, d, max);
     return tree != null && (hit == null || tree < hit) ? tree : hit;
   }, (x, z) => heightAt(x, z) + 0.55);
+  // in a focus the eye goes over his shoulder (whichever sees the wolf) and looks at it: he to one side, it in the middle
+  if (focus.wolf) {
+    const w = focus.wolf;
+    camera.position.lerp(shoulderAt(w, focus.shoulder[0], focus.shoulder[1], eyeTry), focus.amount);
+    camera.getWorldDirection(gaze);
+    sight.set(focus.wolf.pos.x, focus.wolf.pos.y + 0.45, focus.wolf.pos.z).sub(camera.position).normalize();
+    gaze.lerp(sight, focus.amount).normalize();
+    camera.lookAt(sight.copy(camera.position).add(gaze));
+  }
   if (fp > 0.002) {
     // the eye comes forward into his head and looks where the mouse has it look
     const cp = Math.cos(follow.pitch), sp = Math.sin(follow.pitch);
@@ -471,7 +539,7 @@ function tick(dt) {
   // seen from so close the picture is wider, and nothing of him is in it: the lantern's light is, the lantern isn't
   lantern.object.visible = lantern.glow.visible = fp < 0.5;
   sword.object.visible = sword.dabs.visible = sword.trail.visible = fp < 0.5;
-  camera.fov = 46 + 18 * fp;
+  camera.fov = 46 + 18 * fp - (focus.narrow ?? 0) * focus.amount;
   camera.near = 0.3 - 0.2 * fp;
   camera.updateProjectionMatrix();
   man.object.visible = figure.cloakMesh.visible = figure.dabs.visible = fp < 0.5;
@@ -498,7 +566,7 @@ function tick(dt) {
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health, combat, sword, foes, encounters, FIGHTS, audio, sound, voices,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: { ...snow.counts, ...pines.counts, ...cabin.counts }, cabin, heightAt, crestX, tracks, sky, hud, objective, health, combat, sword, foes, encounters, FIGHTS, audio, sound, voices, focus,
   /** Puts him just short of fight i (earlier ones counted as won), facing north. */
   fight(i) {
     for (let k = 0; k < encounters.defs.length; k++) for (const w of encounters.defs[k].wolves) w.place(w.pos.x, w.pos.z, 0);

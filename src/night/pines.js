@@ -163,5 +163,22 @@ export function createPines(shared) {
     }
     return best;
   }
-  return { group, caster, colliders, block, counts: { trees: trees.length, strokes: count } };
+  /**
+   * Whether a spruce stands between a and b, boughs and all: each is taken as a cone, as wide as its lowest boughs
+   * reach at the foot and narrowing to the top. For whether one thing can see another (block is for the eye's
+   * own room, and lets it come close to the boughs).
+   */
+  function hides(a, b) {
+    const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+    const minX = Math.min(a.x, b.x) - 6, maxX = Math.max(a.x, b.x) + 6, minZ = Math.min(a.z, b.z) - 6, maxZ = Math.max(a.z, b.z) + 6;
+    for (const t of near) {
+      if (t.x < minX || t.x > maxX || t.z < minZ || t.z > maxZ) continue;
+      const s = L2 > 1e-6 ? Math.max(0.02, Math.min(0.98, ((t.x - a.x) * dx + (t.z - a.z) * dz) / L2)) : 0.5;
+      const y = a.y + (b.y - a.y) * s, up = (y - t.y) / t.h;
+      if (up < 0 || up > 0.95) continue;
+      if (Math.hypot(a.x + dx * s - t.x, a.z + dz * s - t.z) < t.r * 1.15 * (1 - up)) return true;
+    }
+    return false;
+  }
+  return { group, caster, colliders, block, hides, counts: { trees: trees.length, strokes: count } };
 }
